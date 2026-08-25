@@ -1,4 +1,5 @@
 import { AIChatAgent } from "@cloudflare/ai-chat";
+import type { OnChatMessageOptions } from "@cloudflare/ai-chat";
 import { getAgentByName } from "agents";
 import {
 	convertToModelMessages,
@@ -9,34 +10,29 @@ import {
 import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import { emptyLeadState, type LeadProfile, type LeadState } from "../shared/types";
-import { evaluateQualification, SERVICE_NEIGHBORHOODS } from "./qualify";
+import { evaluateQualification, nextAsk, SERVICE_NEIGHBORHOODS } from "./qualify";
 
-const SYSTEM_PROMPT = `You are Maya, intake coordinator for Northside Realty, a boutique residential brokerage in Austin, Texas.
+const SYSTEM_PROMPT = `You are Maya, intake coordinator for Northside Realty in Austin. You talk like a person at a desk, not a web form.
 
-Your job:
-1. Qualify inbound inquiries for a 45-minute buyer or seller consult.
-2. Ask one question at a time. Be warm, specific, and brief.
-3. Call saveLeadProfile whenever you learn a field.
-4. Call evaluateQualification after each meaningful update.
-5. Never invent calendar times. Only offer slots returned by listAvailableSlots.
-6. Book only after evaluateQualification returns status "qualified".
-7. If status is "unqualified", call flagUnqualified and explain politely. Do not book.
+Pacing is the product:
+- Ask exactly ONE question per reply. Never two. Never a numbered list of questions.
+- React to what they just said in one short beat, then ask the next thing.
+- Keep the reply to 1–3 sentences plus that single question.
+- Do not recap every field you already have unless they ask.
+- Do not say "a few questions" or "quick checklist."
 
-Service area: Austin metro neighborhoods including ${SERVICE_NEIGHBORHOODS.slice(0, 8).join(", ")}, and nearby Round Rock / Pflugerville / Cedar Park.
-We do not handle rentals or commercial deals.
-Buyers need a timeline within 6 months and a budget of at least $250,000.
-Sellers need to own the home, be in-area, and list within 12 months.
-Collect name plus email or phone before booking.
-Ask about pre-approval for buyers, but cash is fine.
+Workflow:
+1. saveLeadProfile as soon as you learn a field.
+2. evaluateQualification after each save.
+3. Never invent calendar times. Only offer slots from listAvailableSlots.
+4. Book only when evaluateQualification returns qualified.
+5. If unqualified, call flagUnqualified and stop.
 
-If the first message is a form dump, acknowledge what you already have and only ask for gaps.
+Service area: ${SERVICE_NEIGHBORHOODS.slice(0, 8).join(", ")}, plus Round Rock, Pflugerville, Cedar Park.
+No rentals or commercial. Buyers: ≤6 months and ≥$250k. Sellers: own the home, in-area, ≤12 months.
+Pre-approval is optional; cash is fine.
 
-Format every reply in markdown:
-- Short paragraphs, not a wall of text
-- **Bold** names, neighborhoods, budgets, and booked times
-- Numbered or bulleted lists for available slots (one slot per line)
-- A confirmation block when booked (time + what happens next)
-Do not wrap the whole message in a code fence.`;
+Markdown: **bold** names, areas, budgets, and booked times. Use a bullet list only for calendar slots. Never wrap the whole reply in a code fence. Finish every sentence.`;
 
 const profilePatch = z.object({
 	name: z.string().optional(),
@@ -52,6 +48,22 @@ const profilePatch = z.object({
 	notes: z.string().optional(),
 });
 
+function compactProfile(profile: LeadProfile): string {
+	const rows = [
+		["name", profile.name],
+		["email", profile.email],
+		["phone", profile.phone],
+		["intent", profile.intent],
+		["neighborhood", profile.neighborhood],
+		["timelineMonths", profile.timelineMonths?.toString()],
+		["budgetUsd", profile.budgetUsd?.toString()],
+		["financing", profile.financing],
+		["ownsProperty", profile.ownsProperty === undefined ? undefined : String(profile.ownsProperty)],
+	].filter(([, value]) => value);
+	if (rows.length === 0) return "(empty — start with buy vs sell)";
+	return rows.map(([key, value]) => `${key}: ${value}`).join("; ");
+}
+
 export class LeadAgent extends AIChatAgent<Env, LeadState> {
 	initialState: LeadState = emptyLeadState();
 
@@ -59,17 +71,79 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 		return {
 			...this.state.profile,
 			...Object.fromEntries(
-				Object.entries(patch).filter(([, value]) => value !== undefined),
+				Object.entries(patch).filter(([, value]) => value !== undefined && value !== ""),
 			),
 		};
 	}
 
-	async onChatMessage() {
+	private writeProfile(profile: LeadProfile) {
+		if (this.state.status === "booked") {
+			this.setState({ ...this.state, profile });
+			return;
+		}
+		const verdict = evaluateQualification(profile);
+		if (verdict.status === "qualified") {
+			this.setState({
+				...this.state,
+				profile,
+				status: "qualified",
+				missing: [],
+				unqualifiedReason: undefined,
+			});
+			return;
+		}
+		if (verdict.status === "unqualified") {
+			this.setState({
+				...this.state,
+				profile,
+				status: "unqualified",
+				missing: [],
+				unqualifiedReason: verdict.reason,
+			});
+			return;
+		}
+		this.setState({
+			...this.state,
+			profile,
+			status: "intake",
+			missing: verdict.missing,
+			unqualifiedReason: undefined,
+		});
+	}
+
+	private seedFromBody(body: Record<string, unknown> | undefined) {
+		if (!body?.seedProfile || typeof body.seedProfile !== "object") return;
+		const parsed = profilePatch.safeParse(body.seedProfile);
+		if (!parsed.success) return;
+		this.writeProfile(this.mergeProfile(parsed.data));
+	}
+
+	private turnInstructions(): string {
+		const ask = nextAsk(this.state.profile);
+		if (this.state.status === "booked") {
+			return "Ticket is booked. Confirm the time. Do not ask qualifying questions.";
+		}
+		if (this.state.status === "unqualified") {
+			return "Lead is unqualified. Be kind, explain, do not book.";
+		}
+		if (this.state.status === "qualified" || !ask) {
+			return "File is complete. Offer 3–5 real slots from listAvailableSlots and book the one they pick.";
+		}
+		return `Ask ONLY this (paraphrase, do not add others): ${ask}`;
+	}
+
+	async onChatMessage(_onFinish?: unknown, options?: OnChatMessageOptions) {
+		this.seedFromBody(options?.body);
 		const workersai = createWorkersAI({ binding: this.env.AI });
 
 		const result = streamText({
 			model: workersai("@cf/ibm-granite/granite-4.0-h-micro"),
-			system: SYSTEM_PROMPT,
+			maxOutputTokens: 1024,
+			system: `${SYSTEM_PROMPT}
+
+Ticket so far: ${compactProfile(this.state.profile)}
+Status: ${this.state.status}
+${this.turnInstructions()}`,
 			messages: await convertToModelMessages(this.messages),
 			stopWhen: stepCountIs(8),
 			tools: {
@@ -78,11 +152,13 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 					inputSchema: profilePatch,
 					execute: async (patch) => {
 						const profile = this.mergeProfile(patch);
-						this.setState({
-							...this.state,
+						this.writeProfile(profile);
+						return {
+							ok: true,
 							profile,
-						});
-						return { ok: true, profile };
+							nextAsk: nextAsk(this.state.profile),
+							status: this.state.status,
+						};
 					},
 				}),
 				evaluateQualification: tool({
@@ -90,32 +166,18 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 						"Run deterministic qualification rules. Call after saving new profile fields.",
 					inputSchema: z.object({}),
 					execute: async () => {
-						const result = evaluateQualification(this.state.profile);
-						if (this.state.status === "booked") {
-							return { ...result, status: "booked", note: "Already booked." };
-						}
-						if (result.status === "qualified") {
-							this.setState({
-								...this.state,
-								status: "qualified",
-								missing: [],
-								unqualifiedReason: undefined,
-							});
-						} else if (result.status === "unqualified") {
-							this.setState({
-								...this.state,
-								status: "unqualified",
-								missing: [],
-								unqualifiedReason: result.reason,
-							});
-						} else {
-							this.setState({
-								...this.state,
-								status: "intake",
-								missing: result.missing,
-							});
-						}
-						return result;
+						this.writeProfile(this.state.profile);
+						const verdict = evaluateQualification(this.state.profile);
+						return {
+							...verdict,
+							nextAsk: nextAsk(this.state.profile),
+							note:
+								this.state.status === "booked"
+									? "Already booked."
+									: nextAsk(this.state.profile)
+										? "Still collecting. Ask only nextAsk."
+										: undefined,
+						};
 					},
 				}),
 				listAvailableSlots: tool({
@@ -124,7 +186,7 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 					execute: async () => {
 						const calendar = await getAgentByName(this.env.OfficeCalendar, "northside");
 						const slots = await calendar.listSlots();
-						return slots.filter((slot) => !slot.booked).slice(0, 12);
+						return slots.filter((slot) => !slot.booked).slice(0, 8);
 					},
 				}),
 				bookConsult: tool({

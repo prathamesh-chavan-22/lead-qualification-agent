@@ -24,6 +24,23 @@ function messageText(message: UIMessage): string {
 		.join("");
 }
 
+function stabilizeMarkdown(text: string): string {
+	let next = text;
+	if ((next.match(/```/g) ?? []).length % 2 === 1) next += "\n```";
+	const withoutFences = next.replace(/```[\s\S]*?```/g, "");
+	if ((withoutFences.match(/\*\*/g) ?? []).length % 2 === 1) next += "**";
+	return next;
+}
+
+function TicketValue({ value }: { value: string }) {
+	const filled = value !== "—";
+	return (
+		<dd key={value} className={filled ? "inked" : "blank"}>
+			{value}
+		</dd>
+	);
+}
+
 function toolName(part: UIMessage["parts"][number]): string | null {
 	if (!isToolUIPart(part)) return null;
 	return part.type.replace(/^tool-/, "");
@@ -63,6 +80,7 @@ export default function App() {
 	const [draft, setDraft] = useState("");
 	const [calendar, setCalendar] = useState<CalendarState>({ seeded: false, slots: [] });
 	const scroller = useRef<HTMLDivElement>(null);
+	const seedRef = useRef<Record<string, unknown> | null>(null);
 
 	const agent = useAgent<LeadState>({
 		agent: "LeadAgent",
@@ -76,10 +94,15 @@ export default function App() {
 		onStateUpdate: (state) => setCalendar(state),
 	});
 
-	const { messages, sendMessage, status, clearHistory } = useAgentChat({ agent });
+	const { messages, sendMessage, status, clearHistory } = useAgentChat({
+		agent,
+		body: () => (seedRef.current ? { seedProfile: seedRef.current } : {}),
+	});
 
 	useEffect(() => {
-		scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+		const node = scroller.current;
+		if (!node) return;
+		node.scrollTop = node.scrollHeight;
 	}, [messages, status]);
 
 	function startNewInquiry() {
@@ -87,24 +110,38 @@ export default function App() {
 		window.location.reload();
 	}
 
+	function profileFromForm() {
+		return {
+			name: form.name.trim() || undefined,
+			email: form.email.trim() || undefined,
+			phone: form.phone.trim() || undefined,
+			intent: form.intent || undefined,
+			neighborhood: form.neighborhood.trim() || undefined,
+			notes: form.notes.trim() || undefined,
+		};
+	}
+
 	function buildFormMessage(): string {
-		const lines = [
-			"New website inquiry for Northside Realty.",
-			form.name && `Name: ${form.name}`,
-			form.email && `Email: ${form.email}`,
-			form.phone && `Phone: ${form.phone}`,
-			form.intent && `Looking to: ${form.intent}`,
-			form.neighborhood && `Area: ${form.neighborhood}`,
-			form.notes && `Notes: ${form.notes}`,
-			"Please qualify me and book a consult if I fit.",
-		].filter(Boolean);
-		return lines.join("\n");
+		const who = form.name.trim() || "there";
+		const intent =
+			form.intent === "buy"
+				? "looking to buy"
+				: form.intent === "sell"
+					? "thinking about selling"
+					: "reaching out";
+		const area = form.neighborhood.trim()
+			? ` around ${form.neighborhood.trim()}`
+			: "";
+		const extra = form.notes.trim() ? ` ${form.notes.trim()}` : "";
+		return `Hi Maya — I'm ${who}, ${intent}${area}.${extra}`;
 	}
 
 	async function onSubmitForm(event: React.FormEvent) {
 		event.preventDefault();
+		seedRef.current = profileFromForm();
 		setFormOpen(false);
 		await sendMessage({ text: buildFormMessage() });
+		seedRef.current = null;
 	}
 
 	async function onSendChat(event: React.FormEvent) {
@@ -138,8 +175,8 @@ export default function App() {
 					{formOpen ? (
 						<form onSubmit={onSubmitForm}>
 							<p className="lede">
-								Tell Maya what you need. She will ask the rest, then pull a consult off the
-								showing board—or mark the file if we cannot help.
+								Leave what you already know. Maya will pick up in chat — one question at a
+								time — and the ticket on the right fills as you talk.
 							</p>
 							<label>
 								Name
@@ -252,7 +289,9 @@ export default function App() {
 									)}
 									{text && message.role === "assistant" ? (
 										<div className="md">
-											<Markdown>{text}</Markdown>
+											<Markdown>
+												{stabilizeMarkdown(text)}
+											</Markdown>
 										</div>
 									) : (
 										text && <p className="plain">{text}</p>
@@ -288,31 +327,33 @@ export default function App() {
 					<dl>
 						<div>
 							<dt>Name</dt>
-							<dd>{lead.profile.name ?? "—"}</dd>
+							<TicketValue value={lead.profile.name ?? "—"} />
 						</div>
 						<div>
 							<dt>Reach</dt>
-							<dd>{lead.profile.email || lead.profile.phone || "—"}</dd>
+							<TicketValue value={lead.profile.email || lead.profile.phone || "—"} />
 						</div>
 						<div>
 							<dt>Intent</dt>
-							<dd>{lead.profile.intent ?? "—"}</dd>
+							<TicketValue value={lead.profile.intent ?? "—"} />
 						</div>
 						<div>
 							<dt>Area</dt>
-							<dd>{lead.profile.neighborhood ?? "—"}</dd>
+							<TicketValue value={lead.profile.neighborhood ?? "—"} />
 						</div>
 						<div>
 							<dt>Timeline</dt>
-							<dd>
-								{lead.profile.timelineMonths !== undefined
-									? `${lead.profile.timelineMonths} mo`
-									: "—"}
-							</dd>
+							<TicketValue
+								value={
+									lead.profile.timelineMonths !== undefined
+										? `${lead.profile.timelineMonths} mo`
+										: "—"
+								}
+							/>
 						</div>
 						<div>
 							<dt>Budget / list</dt>
-							<dd>{formatUsd(lead.profile.budgetUsd)}</dd>
+							<TicketValue value={formatUsd(lead.profile.budgetUsd)} />
 						</div>
 					</dl>
 					{lead.status === "booked" && lead.booking && (
@@ -322,9 +363,6 @@ export default function App() {
 					)}
 					{lead.status === "unqualified" && (
 						<p className="decline">{lead.unqualifiedReason ?? "Not a fit for this desk."}</p>
-					)}
-					{lead.status === "intake" && lead.missing.length > 0 && (
-						<p className="gaps">Still need: {lead.missing.join(", ")}</p>
 					)}
 					<div className="board">
 						<p className="eyebrow">Open on the board</p>

@@ -154,3 +154,28 @@ export function evaluateQualification(profile: LeadProfile): QualificationResult
 
 	return { status: "qualified", missing: [] };
 }
+
+export function nextAsk(profile: LeadProfile): string | null {
+	if (!profile.intent) {
+		return "Are you looking to buy or sell?";
+	}
+	if (!profile.neighborhood) {
+		return "Which Austin neighborhood or area are you focused on?";
+	}
+	if (profile.timelineMonths === undefined) {
+		return "What's your timeline, in months?";
+	}
+	if (profile.intent === "buy" && profile.budgetUsd === undefined) {
+		return "What's your budget for the home?";
+	}
+	if (profile.intent === "sell" && profile.ownsProperty === undefined) {
+		return "Do you already own the home you'd be listing?";
+	}
+	if (!profile.name) {
+		return "What's your name?";
+	}
+	if (!profile.email && !profile.phone) {
+		return "What's the best email or phone for the calendar hold?";
+	}
+	return null;
+}

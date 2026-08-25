@@ -176,17 +176,19 @@ button.text-link {
 .chat {
 	display: flex;
 	flex-direction: column;
-	min-height: 70vh;
+	height: min(72vh, 760px);
+	min-height: 28rem;
 }
 
 .transcript {
 	flex: 1;
-	overflow: auto;
-	max-height: 62vh;
+	min-height: 0;
+	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
 	gap: 0.9rem;
 	padding-right: 0.3rem;
+	padding-bottom: 1.5rem;
 }
 
 .bubble {
@@ -390,6 +392,23 @@ dd {
 	margin: 0;
 }
 
+dd.blank {
+	color: var(--line);
+}
+
+dd.inked {
+	animation: fill-in 0.55s ease;
+}
+
+@keyframes fill-in {
+	from {
+		background: rgba(196, 92, 50, 0.28);
+	}
+	to {
+		background: transparent;
+	}
+}
+
 .confirm,
 .decline,
 .gaps {
@@ -428,12 +447,17 @@ dd {
 	}
 
 	.chat {
-		min-height: 50vh;
+		height: min(62vh, 640px);
+		min-height: 22rem;
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
 	* {
 		scroll-behavior: auto !important;
+	}
+
+	dd.inked {
+		animation: none;
 	}
 }
