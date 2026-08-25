@@ -3,6 +3,7 @@ const LEAK_PATTERNS: RegExp[] = [
 	/actual slots will be listed when queried/gi,
 	/<\|?tool_call\|?>[\s\S]*?<\/?\|?tool_call\|?>/gi,
 	/\[listAvailableSlots\][^\n]*/gi,
+	/<think>[\s\S]*?<\/think>/gi,
 ];
 
 export function stripToolLeakage(text: string): string {

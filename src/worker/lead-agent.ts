@@ -15,6 +15,7 @@ import { evaluateQualification, nextAsk } from "./qualify";
 import { collectEvidence, groundedPatch, scrubInferredFields } from "./ground";
 
 const IDLE_NUDGE_SECONDS = 90;
+const DESK_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 
 const SYSTEM_PROMPT = `You are Maya, intake coordinator for Northside Realty in Austin. You talk like a person at a desk, not a web form.
 
@@ -24,6 +25,7 @@ Pacing is the product:
 - Keep the reply to 1–3 sentences plus that single question.
 - Do not recap every field you already have unless they ask.
 - Do not say "a few questions" or "quick checklist."
+- Do not show inner reasoning, tool names, or JSON. Speak only as Maya.
 
 Workflow:
 1. saveLeadProfile as soon as you learn a field.
@@ -383,7 +385,7 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 		let listedSlots = false;
 
 		const result = streamText({
-			model: workersai("@cf/ibm-granite/granite-4.0-h-micro"),
+			model: workersai(DESK_MODEL),
 			maxOutputTokens: 1024,
 			system: `${SYSTEM_PROMPT}
 
