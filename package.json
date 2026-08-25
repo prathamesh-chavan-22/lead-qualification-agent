@@ -12,9 +12,16 @@
 		"publish": true
 	},
 	"dependencies": {
+		"@ai-sdk/react": "^4.0.70",
+		"@cloudflare/ai-chat": "^0.10.2",
+		"agents": "^0.21.0",
+		"ai": "^7.0.70",
 		"hono": "4.11.1",
+		"hono-agents": "^3.0.12",
 		"react": "19.2.1",
-		"react-dom": "19.2.1"
+		"react-dom": "19.2.1",
+		"workers-ai-provider": "^4.0.0",
+		"zod": "^4.4.3"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "1.15.3",

@@ -8,6 +8,28 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	"ai": {
+		"binding": "AI",
+		"remote": true
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "LeadAgent",
+				"class_name": "LeadAgent"
+			},
+			{
+				"name": "OfficeCalendar",
+				"class_name": "OfficeCalendar"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["LeadAgent", "OfficeCalendar"]
+		}
+	],
 	"assets": {
 		"directory": "./dist/client",
 		"not_found_handling": "single-page-application"

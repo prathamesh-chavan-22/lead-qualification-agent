@@ -1,45 +1,361 @@
+:root {
+	--ink: #14263a;
+	--dusk: #1c3a52;
+	--paper: #eef3f6;
+	--panel: #f7fafc;
+	--line: #b7c5d0;
+	--copper: #c45c32;
+	--ok: #2c6a4f;
+	--hold: #8a5a12;
+	--no: #8b2e2e;
+	--type-display: "Syne", "Gill Sans", sans-serif;
+	--type-body: "Atkinson Hyperlegible", "Segoe UI", sans-serif;
+	color: var(--ink);
+	background: var(--paper);
+	font-family: var(--type-body);
+	line-height: 1.45;
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body,
 #root {
+	margin: 0;
+	min-height: 100%;
+}
+
+body {
+	min-height: 100vh;
+	background-color: var(--paper);
+	background-image:
+		linear-gradient(to right, rgba(20, 38, 58, 0.06) 1px, transparent 1px),
+		linear-gradient(to bottom, rgba(20, 38, 58, 0.06) 1px, transparent 1px);
+	background-size: 48px 48px;
+	background-position: -1px -1px;
+}
+
+button,
+input,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+button {
+	cursor: pointer;
+}
+
+h1,
+h2,
+.eyebrow,
+.stamp {
+	font-family: var(--type-display);
+}
+
+h1 {
+	margin: 0.1rem 0 0;
+	font-size: clamp(1.8rem, 3vw, 2.6rem);
+	letter-spacing: -0.03em;
+	font-weight: 800;
+}
+
+.desk {
 	max-width: 1280px;
 	margin: 0 auto;
-	padding: 2rem;
-	text-align: center;
+	padding: 1.5rem 1.25rem 3rem;
 }
 
-.logo {
-	height: 6em;
-	padding: 1.5em;
-	will-change: filter;
-	transition: filter 300ms;
-}
-.logo:hover {
-	filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-	filter: drop-shadow(0 0 2em #61dafbaa);
-}
-.logo.cloudflare:hover {
-	filter: drop-shadow(0 0 2em #f6821faa);
+.mast {
+	display: flex;
+	justify-content: space-between;
+	align-items: end;
+	gap: 1rem;
+	margin-bottom: 1.5rem;
+	padding-bottom: 1rem;
+	border-bottom: 1px solid var(--line);
 }
 
-@keyframes logo-spin {
-	from {
-		transform: rotate(0deg);
+.eyebrow {
+	margin: 0;
+	text-transform: uppercase;
+	letter-spacing: 0.16em;
+	font-size: 0.72rem;
+	color: var(--dusk);
+}
+
+.layout {
+	display: grid;
+	grid-template-columns: minmax(220px, 0.9fr) minmax(320px, 1.4fr) minmax(240px, 0.95fr);
+	gap: 1rem;
+	align-items: start;
+}
+
+.panel,
+.ticket {
+	background: var(--panel);
+	border: 1px solid var(--line);
+	padding: 1.1rem;
+}
+
+.lede,
+.empty {
+	color: var(--dusk);
+}
+
+label {
+	display: grid;
+	gap: 0.3rem;
+	margin: 0.7rem 0;
+	font-size: 0.92rem;
+}
+
+input,
+textarea {
+	width: 100%;
+	border: 0;
+	border-bottom: 1px solid var(--ink);
+	background: transparent;
+	padding: 0.4rem 0;
+	border-radius: 0;
+}
+
+input:focus,
+textarea:focus,
+button:focus-visible {
+	outline: 2px solid var(--copper);
+	outline-offset: 2px;
+}
+
+fieldset {
+	border: 0;
+	padding: 0;
+	margin: 0.8rem 0;
+	display: flex;
+	gap: 1rem;
+}
+
+.choice {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.6rem;
+	margin-top: 1rem;
+}
+
+button {
+	background: var(--ink);
+	color: var(--paper);
+	border: 0;
+	padding: 0.65rem 1rem;
+}
+
+button.ghost,
+button.text-link {
+	background: transparent;
+	color: var(--ink);
+	border: 1px solid var(--ink);
+}
+
+button.text-link {
+	border: 0;
+	padding: 0.4rem 0;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}
+
+.chat {
+	display: flex;
+	flex-direction: column;
+	min-height: 70vh;
+}
+
+.transcript {
+	flex: 1;
+	overflow: auto;
+	max-height: 62vh;
+	display: flex;
+	flex-direction: column;
+	gap: 0.9rem;
+	padding-right: 0.3rem;
+}
+
+.bubble {
+	max-width: 92%;
+	padding: 0.7rem 0.85rem;
+	border: 1px solid var(--line);
+}
+
+.bubble.user {
+	align-self: flex-end;
+	background: #e4edf3;
+}
+
+.bubble.assistant {
+	align-self: flex-start;
+	border-left: 3px solid var(--copper);
+}
+
+.who {
+	margin: 0 0 0.25rem;
+	font-size: 0.72rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	font-family: var(--type-display);
+}
+
+.bubble p {
+	margin: 0;
+	white-space: pre-wrap;
+}
+
+.tools {
+	list-style: none;
+	padding: 0;
+	margin: 0 0 0.4rem;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem;
+}
+
+.tools li {
+	font-size: 0.75rem;
+	border: 1px dashed var(--copper);
+	padding: 0.1rem 0.4rem;
+}
+
+.composer {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 0.9rem;
+}
+
+.composer input {
+	flex: 1;
+}
+
+.typing {
+	margin: 0;
+	font-style: italic;
+	color: var(--dusk);
+}
+
+.ticket {
+	position: relative;
+	padding-left: 1.6rem;
+	box-shadow: 8px 10px 0 rgba(20, 38, 58, 0.08);
+}
+
+.punch {
+	position: absolute;
+	left: -1px;
+	top: 1.4rem;
+	bottom: 1.4rem;
+	width: 14px;
+	background:
+		radial-gradient(circle, var(--paper) 5px, transparent 5.5px) 0 0 / 14px 28px repeat-y;
+	border-right: 1px dashed var(--line);
+}
+
+.stamp {
+	margin: 0.35rem 0 0.8rem;
+	font-size: 1.4rem;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.stamp.intake {
+	color: var(--hold);
+}
+
+.stamp.qualified,
+.stamp.booked {
+	color: var(--ok);
+}
+
+.stamp.unqualified {
+	color: var(--no);
+}
+
+dl {
+	margin: 0;
+	display: grid;
+	gap: 0.55rem;
+}
+
+dl div {
+	display: grid;
+	grid-template-columns: 7.5rem 1fr;
+	gap: 0.4rem;
+	border-bottom: 1px dotted var(--line);
+	padding-bottom: 0.3rem;
+}
+
+dt {
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--dusk);
+}
+
+dd {
+	margin: 0;
+}
+
+.confirm,
+.decline,
+.gaps {
+	margin-top: 1rem;
+	padding: 0.7rem;
+	border: 1px solid currentColor;
+}
+
+.confirm {
+	color: var(--ok);
+}
+
+.decline {
+	color: var(--no);
+}
+
+.board ul {
+	list-style: none;
+	padding: 0;
+	margin: 0.4rem 0 0;
+}
+
+.board li {
+	padding: 0.35rem 0;
+	border-bottom: 1px solid var(--line);
+	font-size: 0.9rem;
+}
+
+.parked p {
+	margin: 0.3rem 0 0.8rem;
+}
+
+@media (max-width: 980px) {
+	.layout {
+		grid-template-columns: 1fr;
 	}
-	to {
-		transform: rotate(360deg);
+
+	.chat {
+		min-height: 50vh;
 	}
 }
 
-@media (prefers-reduced-motion: no-preference) {
-	a:nth-of-type(2) .logo {
-		animation: logo-spin infinite 20s linear;
+@media (prefers-reduced-motion: reduce) {
+	* {
+		scroll-behavior: auto !important;
 	}
-}
-
-.card {
-	padding: 2em;
-}
-
-.read-the-docs {
-	color: #888;
 }
