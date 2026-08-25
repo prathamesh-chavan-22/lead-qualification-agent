@@ -13,7 +13,8 @@ app.use("*", agentsMiddleware());
 app.get("/api/calendar", async (c) => {
 	const calendar = await getAgentByName(c.env.OfficeCalendar, "northside");
 	const slots = await calendar.listSlots();
-	return c.json({ slots });
+	const leads = await calendar.listLeads();
+	return c.json({ slots, leads });
 });
 
 export default app;

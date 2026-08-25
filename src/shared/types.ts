@@ -14,6 +14,7 @@ export type LeadProfile = {
 	budgetUsd?: number;
 	financing?: Financing;
 	ownsProperty?: boolean;
+	inMetro?: boolean;
 	refusedContact?: boolean;
 	notes?: string;
 };
@@ -30,6 +31,8 @@ export type LeadState = {
 	missing: string[];
 	unqualifiedReason?: string;
 	booking?: Booking;
+	lastCalendarError?: string;
+	idleNudge?: string;
 };
 
 export type CalendarSlot = {
@@ -40,14 +43,27 @@ export type CalendarSlot = {
 	leadName?: string;
 };
 
+export type LeadSummary = {
+	id: string;
+	status: LeadStatus;
+	name?: string;
+	intent?: LeadIntent;
+	neighborhood?: string;
+	booking?: Booking;
+	unqualifiedReason?: string;
+	updatedAt: string;
+};
+
 export type CalendarState = {
 	seeded: boolean;
 	slots: CalendarSlot[];
+	leads: LeadSummary[];
 };
 
 export const emptyCalendarState = (): CalendarState => ({
 	seeded: false,
 	slots: [],
+	leads: [],
 });
 
 export const emptyLeadState = (): LeadState => ({

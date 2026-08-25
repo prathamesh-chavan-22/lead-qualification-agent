@@ -80,6 +80,12 @@ h1 {
 	border-bottom: 1px solid var(--line);
 }
 
+.mast-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
 .eyebrow {
 	margin: 0;
 	text-transform: uppercase;
@@ -419,6 +425,90 @@ dd.inked {
 
 .confirm {
 	color: var(--ok);
+}
+
+.confirm p {
+	margin: 0 0 0.6rem;
+}
+
+.nudge {
+	margin: 0 0 0.8rem;
+	padding: 0.55rem 0.7rem;
+	border: 1px dashed var(--hold);
+	color: var(--hold);
+}
+
+button.slot {
+	width: 100%;
+	text-align: left;
+	background: transparent;
+	color: var(--ink);
+	border: 0;
+	padding: 0.15rem 0;
+}
+
+button.slot:hover {
+	color: var(--copper);
+}
+
+.pipeline {
+	display: grid;
+	gap: 1rem;
+}
+
+.pipe {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.92rem;
+}
+
+.pipe th,
+.pipe td {
+	text-align: left;
+	padding: 0.55rem 0.4rem;
+	border-bottom: 1px solid var(--line);
+	vertical-align: middle;
+}
+
+.pipe th {
+	font-size: 0.72rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--dusk);
+	font-weight: 400;
+}
+
+.pill {
+	font-family: var(--type-display);
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	font-size: 0.78rem;
+}
+
+.pill.ok {
+	color: var(--ok);
+}
+
+.pill.hold {
+	color: var(--hold);
+}
+
+.pill.no {
+	color: var(--no);
+}
+
+.held {
+	list-style: none;
+	padding: 0;
+	margin: 0.4rem 0 0;
+}
+
+.held li {
+	display: flex;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 0.4rem 0;
+	border-bottom: 1px solid var(--line);
 }
 
 .decline {

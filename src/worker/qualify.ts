@@ -2,6 +2,11 @@ import type { LeadProfile } from "../shared/types";
 
 export const SERVICE_NEIGHBORHOODS = [
 	"east austin",
+	"south austin",
+	"north austin",
+	"west austin",
+	"west lake",
+	"westlake",
 	"hyde park",
 	"mueller",
 	"south congress",
@@ -23,7 +28,7 @@ export const SERVICE_NEIGHBORHOODS = [
 	"cedar park",
 	"south lamar",
 	"bouldin",
-	"austin",
+	"austin metro",
 ] as const;
 
 const OUT_OF_AREA = [
@@ -56,7 +61,8 @@ export function inServiceArea(neighborhood: string | undefined): boolean | null 
 	const n = normalize(neighborhood);
 	if (!n) return null;
 	if (OUT_OF_AREA.some((city) => n.includes(city))) return false;
-	return SERVICE_NEIGHBORHOODS.some((area) => n.includes(area));
+	if (SERVICE_NEIGHBORHOODS.some((area) => n.includes(area))) return true;
+	return null;
 }
 
 export function evaluateQualification(profile: LeadProfile): QualificationResult {
@@ -106,6 +112,9 @@ export function evaluateQualification(profile: LeadProfile): QualificationResult
 			missing: [],
 			reason: "Location is outside the Austin metro service area.",
 		};
+	}
+	if (area === null && profile.neighborhood && !profile.inMetro) {
+		missing.push("confirm Austin metro");
 	}
 
 	if (profile.intent === "buy" && profile.budgetUsd !== undefined && profile.budgetUsd < MIN_BUYER_BUDGET_USD) {
@@ -162,6 +171,9 @@ export function nextAsk(profile: LeadProfile): string | null {
 	if (!profile.neighborhood) {
 		return "Which Austin neighborhood or area are you focused on?";
 	}
+	if (inServiceArea(profile.neighborhood) === null && !profile.inMetro) {
+		return "Is that in the Austin metro? Round Rock, Pflugerville, and Cedar Park count.";
+	}
 	if (profile.timelineMonths === undefined) {
 		return "What's your timeline, in months?";
 	}
@@ -170,6 +182,9 @@ export function nextAsk(profile: LeadProfile): string | null {
 	}
 	if (profile.intent === "sell" && profile.ownsProperty === undefined) {
 		return "Do you already own the home you'd be listing?";
+	}
+	if (profile.intent === "buy" && profile.financing === undefined) {
+		return "Are you cash, pre-approved, or still figuring out financing?";
 	}
 	if (!profile.name) {
 		return "What's your name?";

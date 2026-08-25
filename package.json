@@ -38,13 +38,15 @@
 		"typescript": "5.9.3",
 		"typescript-eslint": "8.48.0",
 		"vite": "^7.0.0",
+		"vitest": "^4.1.11",
 		"wrangler": "4.88.0"
 	},
 	"private": true,
 	"scripts": {
 		"build": "tsc -b && vite build",
 		"cf-typegen": "wrangler types",
-		"check": "tsc && vite build && wrangler deploy --dry-run",
+		"test": "vitest run",
+		"check": "tsc && vitest run && vite build && wrangler deploy --dry-run",
 		"deploy": "wrangler deploy",
 		"dev": "vite",
 		"lint": "eslint .",

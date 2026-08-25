@@ -1,9 +1,15 @@
-import { Agent } from "agents";
-import { emptyCalendarState, type CalendarSlot, type CalendarState } from "../shared/types";
+import { Agent, callable } from "agents";
+import {
+	emptyCalendarState,
+	type CalendarSlot,
+	type CalendarState,
+	type LeadSummary,
+} from "../shared/types";
 
 const SLOT_MINUTES = 45;
 const START_HOUR = 9;
 const LAST_START_HOUR = 16;
+const OFFICE_HOLDS = new Set(["Held for listing prep", "Walk-through (existing client)"]);
 
 function weekdayKey(date: Date): string {
 	return new Intl.DateTimeFormat("en-CA", {
@@ -77,40 +83,67 @@ function generateSlots(now = new Date()): CalendarSlot[] {
 		}
 	}
 
-	const prebook = [0, 2, 11];
-	for (const index of prebook) {
-		const slot = slots[index];
-		if (slot) {
+	return slots;
+}
+
+function applyOfficeHolds(slots: CalendarSlot[]): CalendarSlot[] {
+	const next = slots.map((slot) => ({ ...slot }));
+	const holds: Array<[number, string]> = [
+		[0, "Held for listing prep"],
+		[2, "Held for listing prep"],
+		[11, "Walk-through (existing client)"],
+	];
+	for (const [index, leadName] of holds) {
+		const slot = next[index];
+		if (slot && !slot.booked) {
 			slot.booked = true;
-			slot.leadName = index === 11 ? "Walk-through (existing client)" : "Held for listing prep";
+			slot.leadName = leadName;
 		}
 	}
+	return next;
+}
 
-	return slots;
+function mergeRolling(existing: CalendarSlot[], generated: CalendarSlot[]): CalendarSlot[] {
+	const booked = new Map(existing.filter((slot) => slot.booked).map((slot) => [slot.id, slot]));
+	return generated.map((slot) => {
+		const held = booked.get(slot.id);
+		return held ? { ...slot, booked: true, leadName: held.leadName } : slot;
+	});
 }
 
 export class OfficeCalendar extends Agent<Env, CalendarState> {
 	initialState: CalendarState = emptyCalendarState();
 
 	override onStart() {
-		if (!this.state.seeded) {
-			this.setState({
-				seeded: true,
-				slots: generateSlots(),
-			});
-		}
+		this.rollForward();
 	}
 
+	@callable()
 	async listSlots(): Promise<CalendarSlot[]> {
-		this.ensureSeeded();
+		this.rollForward();
 		return this.state.slots;
 	}
 
+	@callable()
+	async listLeads(): Promise<LeadSummary[]> {
+		return [...this.state.leads].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+	}
+
+	async upsertLead(lead: LeadSummary): Promise<{ ok: true }> {
+		const others = this.state.leads.filter((item) => item.id !== lead.id);
+		this.setState({
+			...this.state,
+			leads: [lead, ...others].slice(0, 50),
+		});
+		return { ok: true };
+	}
+
+	@callable()
 	async bookSlot(input: {
 		slotId: string;
 		leadName: string;
 	}): Promise<{ ok: true; slot: CalendarSlot } | { ok: false; reason: string }> {
-		this.ensureSeeded();
+		this.rollForward();
 		const slots = this.state.slots.map((slot) => ({ ...slot }));
 		const slot = slots.find((item) => item.id === input.slotId);
 		if (!slot) {
@@ -125,12 +158,72 @@ export class OfficeCalendar extends Agent<Env, CalendarState> {
 		return { ok: true, slot };
 	}
 
-	private ensureSeeded() {
-		if (!this.state.seeded || this.state.slots.length === 0) {
-			this.setState({
-				seeded: true,
-				slots: generateSlots(),
-			});
+	@callable()
+	async releaseSlot(input: {
+		slotId: string;
+	}): Promise<{ ok: true; slot: CalendarSlot } | { ok: false; reason: string }> {
+		this.rollForward();
+		const slots = this.state.slots.map((slot) => ({ ...slot }));
+		const slot = slots.find((item) => item.id === input.slotId);
+		if (!slot) {
+			return { ok: false, reason: "That slot is not on the calendar." };
 		}
+		if (!slot.booked) {
+			return { ok: false, reason: "That time is not held." };
+		}
+		if (slot.leadName && OFFICE_HOLDS.has(slot.leadName)) {
+			return { ok: false, reason: "Office holds cannot be released from intake." };
+		}
+		slot.booked = false;
+		slot.leadName = undefined;
+		this.setState({ ...this.state, slots });
+		return { ok: true, slot };
+	}
+
+	@callable()
+	async rescheduleSlot(input: {
+		fromSlotId: string;
+		toSlotId: string;
+		leadName: string;
+	}): Promise<{ ok: true; slot: CalendarSlot } | { ok: false; reason: string }> {
+		if (input.fromSlotId === input.toSlotId) {
+			const existing = this.state.slots.find((slot) => slot.id === input.toSlotId);
+			if (existing?.booked) return { ok: true, slot: existing };
+			return { ok: false, reason: "That time is not held." };
+		}
+		const booked = await this.bookSlot({ slotId: input.toSlotId, leadName: input.leadName });
+		if (!booked.ok) return booked;
+		const released = await this.releaseSlot({ slotId: input.fromSlotId });
+		if (!released.ok) {
+			await this.releaseSlot({ slotId: input.toSlotId });
+			return released;
+		}
+		return booked;
+	}
+
+	private rollForward() {
+		const generated = generateSlots();
+		const previous = this.state.slots;
+		let slots = mergeRolling(previous, generated);
+		const hasOfficeHold = slots.some((slot) => slot.leadName && OFFICE_HOLDS.has(slot.leadName));
+		if (!this.state.seeded || previous.length === 0 || !hasOfficeHold) {
+			slots = applyOfficeHolds(slots);
+		}
+		const unchanged =
+			this.state.seeded &&
+			previous.length === slots.length &&
+			previous.every(
+				(slot, index) =>
+					slot.id === slots[index]?.id &&
+					slot.booked === slots[index]?.booked &&
+					slot.leadName === slots[index]?.leadName,
+			);
+		if (unchanged) return;
+		this.setState({
+			...this.state,
+			seeded: true,
+			slots,
+			leads: this.state.leads ?? [],
+		});
 	}
 }
