@@ -10,7 +10,9 @@ import {
 import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import { emptyLeadState, type LeadProfile, type LeadState } from "../shared/types";
+import { formatAustinRange } from "../shared/datetime";
 import { evaluateQualification, nextAsk } from "./qualify";
+import { collectEvidence, groundedPatch, scrubInferredFields } from "./ground";
 
 const IDLE_NUDGE_SECONDS = 90;
 
@@ -26,14 +28,20 @@ Pacing is the product:
 Workflow:
 1. saveLeadProfile as soon as you learn a field.
 2. evaluateQualification after each save.
-3. Never invent calendar times. Only offer slots from listAvailableSlots.
-4. Book only when evaluateQualification returns qualified.
-5. If unqualified, call flagUnqualified and stop.
-6. They can also lock a time from the showing ticket; if status is booked, just confirm.
+3. Never invent calendar times. Copy only the times listed under "Board" or returned by listAvailableSlots.
+4. Never write placeholders, template notes, or the words "when queried". If the board is empty, say the week is full.
+5. Book only when evaluateQualification returns qualified.
+6. If unqualified, call flagUnqualified and stop.
+7. They can also lock a time from the showing ticket; if status is booked, just confirm.
+
+File discipline:
+- saveLeadProfile only for fields they just stated. Omit everything else.
+- Never guess ownsProperty, inMetro, financing, budget, or timeline.
+- Do not send false/unknown to "fill in" a blank. Blank means unasked.
 
 Service area: Austin metro neighborhoods (East Austin, Hyde Park, Mueller, South Congress, Round Rock, Pflugerville, Cedar Park, and nearby). If the area is unfamiliar, ask whether it is Austin metro — do not guess out-of-area unless they name another city.
 No rentals or commercial. Buyers: ≤6 months and ≥$250k. Sellers: own the home, in-area, ≤12 months.
-Pre-approval is optional; cash is fine. Save financing when they mention it; unknown is allowed.
+Pre-approval is optional; cash is fine. Save financing only when they mention it.
 
 Markdown: **bold** names, areas, budgets, and booked times. Use a bullet list only for calendar slots. Never wrap the whole reply in a code fence. Finish every sentence.`;
 
@@ -46,8 +54,14 @@ const profilePatch = z.object({
 	neighborhood: z.string().optional(),
 	budgetUsd: z.number().optional(),
 	financing: z.enum(["preapproved", "cash", "unknown", "none"]).optional(),
-	ownsProperty: z.boolean().optional(),
-	inMetro: z.boolean().optional(),
+	ownsProperty: z
+		.boolean()
+		.optional()
+		.describe("Only if they said they own or do not own the home. Omit if unasked."),
+	inMetro: z
+		.boolean()
+		.optional()
+		.describe("Only if they confirmed whether the area is Austin metro. Omit if unasked."),
 	refusedContact: z.boolean().optional(),
 	notes: z.string().optional(),
 });
@@ -132,6 +146,39 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 		logDesk("idle_nudge", { lead: this.name, status: this.state.status });
 	}
 
+	private evidenceText() {
+		return collectEvidence(this.messages, [
+			this.state.profile.notes ?? "",
+			this.state.profile.name ?? "",
+			this.state.profile.email ?? "",
+			this.state.profile.phone ?? "",
+			this.state.profile.neighborhood ?? "",
+		]);
+	}
+
+	private async writeStatedProfile(patch: LeadProfile) {
+		const evidence = this.evidenceText();
+		const profile = scrubInferredFields(this.mergeProfile(groundedPatch(patch, evidence)), evidence);
+		await this.writeProfile(profile);
+	}
+
+	private async fetchOpenBoard(): Promise<Array<{ slotId: string; label: string }>> {
+		try {
+			const calendar = await getAgentByName(this.env.OfficeCalendar, "northside");
+			const slots = await calendar.listSlots();
+			return slots
+				.filter((slot) => !slot.booked)
+				.slice(0, 8)
+				.map((slot) => ({
+					slotId: slot.id,
+					label: formatAustinRange(slot.startsAt, slot.endsAt),
+				}));
+		} catch (error) {
+			logDesk("board_failed", { error: String(error) });
+			return [];
+		}
+	}
+
 	private async writeProfile(profile: LeadProfile) {
 		if (this.state.status === "booked") {
 			await this.persist({ ...this.state, profile, idleNudge: undefined });
@@ -195,7 +242,7 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 			return "They went quiet. One short check-in, then ask only the next missing field.";
 		}
 		if (this.state.status === "qualified" || !ask) {
-			return "File is complete. Offer 3–5 real slots from listAvailableSlots and book the one they pick. They may also click a time on the ticket.";
+			return "File is complete. Call listAvailableSlots, then offer 3–5 Board times using those exact labels. Never invent times or write placeholder copy.";
 		}
 		return `Ask ONLY this (paraphrase, do not add others): ${ask}`;
 	}
@@ -323,8 +370,17 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 
 	async onChatMessage(_onFinish?: unknown, options?: OnChatMessageOptions) {
 		await this.seedFromBody(options?.body);
+		await this.writeProfile(scrubInferredFields(this.state.profile, this.evidenceText()));
 		await this.armIdleNudge();
 		const workersai = createWorkersAI({ binding: this.env.AI });
+		const board = await this.fetchOpenBoard();
+		const boardBlock =
+			board.length > 0
+				? `Board (copy these labels verbatim after the file is qualified; use slotId only in bookConsult):\n${board
+						.map((slot) => `- ${slot.label} [${slot.slotId}]`)
+						.join("\n")}`
+				: "Board: no open 45-minute holds this week. If qualified, say the board is full. Do not invent times or placeholders.";
+		let listedSlots = false;
 
 		const result = streamText({
 			model: workersai("@cf/ibm-granite/granite-4.0-h-micro"),
@@ -334,19 +390,35 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 Ticket so far: ${compactProfile(this.state.profile)}
 Status: ${this.state.status}
 ${this.state.lastCalendarError ? `Calendar: ${this.state.lastCalendarError}` : ""}
+${boardBlock}
 ${this.turnInstructions()}`,
 			messages: await convertToModelMessages(this.messages),
 			stopWhen: stepCountIs(8),
+			prepareStep: () => {
+				if (this.state.status === "qualified" && !listedSlots) {
+					return {
+						toolChoice: { type: "tool" as const, toolName: "listAvailableSlots" },
+						activeTools: [
+							"listAvailableSlots",
+							"bookConsult",
+							"rescheduleConsult",
+							"cancelConsult",
+							"saveLeadProfile",
+						],
+					};
+				}
+				return {};
+			},
 			tools: {
 				saveLeadProfile: tool({
-					description: "Save or update structured fields collected from the inquiry.",
+					description:
+						"Save fields the person just stated. Omit any field they did not say. Never guess.",
 					inputSchema: profilePatch,
 					execute: async (patch) => {
-						const profile = this.mergeProfile(patch);
-						await this.writeProfile(profile);
+						await this.writeStatedProfile(patch);
 						return {
 							ok: true,
-							profile,
+							profile: this.state.profile,
 							nextAsk: nextAsk(this.state.profile),
 							status: this.state.status,
 						};
@@ -357,7 +429,9 @@ ${this.turnInstructions()}`,
 						"Run deterministic qualification rules. Call after saving new profile fields.",
 					inputSchema: z.object({}),
 					execute: async () => {
-						await this.writeProfile(this.state.profile);
+						await this.writeProfile(
+							scrubInferredFields(this.state.profile, this.evidenceText()),
+						);
 						const verdict = evaluateQualification(this.state.profile);
 						return {
 							...verdict,
@@ -372,12 +446,25 @@ ${this.turnInstructions()}`,
 					},
 				}),
 				listAvailableSlots: tool({
-					description: "List open 45-minute consult slots on the office calendar.",
+					description:
+						"List open 45-minute consult slots. Always call this before offering times. Returns labeled Austin times — copy them. Never invent placeholders.",
 					inputSchema: z.object({}),
 					execute: async () => {
-						const calendar = await getAgentByName(this.env.OfficeCalendar, "northside");
-						const slots = await calendar.listSlots();
-						return slots.filter((slot) => !slot.booked).slice(0, 8);
+						const slots = await this.fetchOpenBoard();
+						listedSlots = true;
+						if (slots.length === 0) {
+							return {
+								ok: false,
+								slots: [],
+								reason: "No open 45-minute holds this week.",
+								speak: "The board is full this week. Do not invent times.",
+							};
+						}
+						return {
+							ok: true,
+							slots,
+							speak: "Offer these exact labels as a short bullet list.",
+						};
 					},
 				}),
 				bookConsult: tool({

@@ -5,6 +5,7 @@ import { isToolUIPart, type UIMessage } from "ai";
 import Markdown from "react-markdown";
 import { emptyLeadState, type CalendarState, type LeadState } from "../shared/types";
 import { confirmationCopy, consultIcs, formatAustinRange, formatUsd } from "./format";
+import { stripToolLeakage } from "../shared/sanitize";
 import { Desk } from "./Desk";
 import "./App.css";
 
@@ -19,10 +20,11 @@ function sessionId(): string {
 }
 
 function messageText(message: UIMessage): string {
-	return message.parts
+	const raw = message.parts
 		.filter((part) => part.type === "text")
 		.map((part) => ("text" in part ? part.text : ""))
 		.join("");
+	return message.role === "assistant" ? stripToolLeakage(raw) : raw;
 }
 
 function stabilizeMarkdown(text: string): string {
@@ -396,6 +398,20 @@ function Intake() {
 						<dt>Financing</dt>
 						<TicketValue value={lead.profile.financing ?? "—"} />
 					</div>
+					{(lead.profile.intent === "sell" || lead.profile.ownsProperty !== undefined) && (
+						<div>
+							<dt>Owns the home</dt>
+							<TicketValue
+								value={
+									lead.profile.ownsProperty === undefined
+										? "—"
+										: lead.profile.ownsProperty
+											? "Yes"
+											: "No"
+								}
+							/>
+						</div>
+					)}
 				</dl>
 				{lead.status === "booked" && lead.booking && bookingLabel && (
 					<div className="confirm">
