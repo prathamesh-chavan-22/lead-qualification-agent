@@ -213,9 +213,87 @@ button.text-link {
 	font-family: var(--type-display);
 }
 
-.bubble p {
+.bubble p.plain {
 	margin: 0;
 	white-space: pre-wrap;
+}
+
+.md {
+	font-size: 0.98rem;
+}
+
+.md > *:first-child {
+	margin-top: 0;
+}
+
+.md > *:last-child {
+	margin-bottom: 0;
+}
+
+.md p,
+.md ul,
+.md ol {
+	margin: 0.45rem 0;
+}
+
+.md ul,
+.md ol {
+	padding-left: 1.15rem;
+}
+
+.md li {
+	margin: 0.2rem 0;
+}
+
+.md li::marker {
+	color: var(--copper);
+}
+
+.md strong {
+	font-weight: 700;
+}
+
+.md em {
+	color: var(--dusk);
+}
+
+.md a {
+	color: var(--copper);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.md h1,
+.md h2,
+.md h3 {
+	font-family: var(--type-display);
+	font-size: 1.05rem;
+	letter-spacing: -0.02em;
+	margin: 0.55rem 0 0.3rem;
+}
+
+.md code {
+	font-size: 0.88em;
+	background: #e4edf3;
+	padding: 0.05rem 0.28rem;
+}
+
+.md pre {
+	overflow: auto;
+	padding: 0.6rem 0.7rem;
+	background: #e4edf3;
+	border: 1px solid var(--line);
+}
+
+.md pre code {
+	background: none;
+	padding: 0;
+}
+
+.md hr {
+	border: 0;
+	border-top: 1px dashed var(--line);
+	margin: 0.7rem 0;
 }
 
 .tools {

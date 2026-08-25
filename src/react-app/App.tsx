@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAgent } from "agents/react";
 import { useAgentChat } from "@cloudflare/ai-chat/react";
 import { isToolUIPart, type UIMessage } from "ai";
+import Markdown from "react-markdown";
 import { emptyLeadState, type CalendarState, type LeadState } from "../shared/types";
 import { formatAustinRange, formatUsd } from "./format";
 import "./App.css";
@@ -249,7 +250,13 @@ export default function App() {
 											))}
 										</ul>
 									)}
-									{text && <p>{text}</p>}
+									{text && message.role === "assistant" ? (
+										<div className="md">
+											<Markdown>{text}</Markdown>
+										</div>
+									) : (
+										text && <p className="plain">{text}</p>
+									)}
 								</article>
 							);
 						})}

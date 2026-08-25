@@ -29,7 +29,14 @@ Sellers need to own the home, be in-area, and list within 12 months.
 Collect name plus email or phone before booking.
 Ask about pre-approval for buyers, but cash is fine.
 
-If the first message is a form dump, acknowledge what you already have and only ask for gaps.`;
+If the first message is a form dump, acknowledge what you already have and only ask for gaps.
+
+Format every reply in markdown:
+- Short paragraphs, not a wall of text
+- **Bold** names, neighborhoods, budgets, and booked times
+- Numbered or bulleted lists for available slots (one slot per line)
+- A confirmation block when booked (time + what happens next)
+Do not wrap the whole message in a code fence.`;
 
 const profilePatch = z.object({
 	name: z.string().optional(),
@@ -61,7 +68,7 @@ export class LeadAgent extends AIChatAgent<Env, LeadState> {
 		const workersai = createWorkersAI({ binding: this.env.AI });
 
 		const result = streamText({
-			model: workersai("@cf/zai-org/glm-4.7-flash"),
+			model: workersai("@cf/ibm-granite/granite-4.0-h-micro"),
 			system: SYSTEM_PROMPT,
 			messages: await convertToModelMessages(this.messages),
 			stopWhen: stepCountIs(8),
